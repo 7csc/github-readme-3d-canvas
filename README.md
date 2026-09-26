@@ -254,4 +254,7 @@ npm test                                          # 単体テスト
 - GIF では前フレームから変化のない領域を透明ピクセルとして書き出し、ファイルサイズを抑えています。
 - サイズが大きい場合は `frames` か `width` / `height` を下げてください（10 MB を超えると警告が出ます）。
 - フレーム間隔は 1/100 秒単位です。端数は各フレームに振り分けるので、ループ全体の長さは `frames / fps` 秒ちょうどになります。
-- 同梱フォント Inter は SIL Open Font License 1.1 で配布されています（`@fontsource/inter`）。
+
+## ライセンス
+
+[MIT](LICENSE)。同梱フォント Inter は SIL Open Font License 1.1（`@fontsource/inter`）です。

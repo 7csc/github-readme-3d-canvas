@@ -1,8 +1,9 @@
 {
   "name": "github-3d-canvas",
-  "version": "0.1.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Render three.js scenes to looping GIFs for GitHub profile READMEs",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "render": "node src/render.js --output out",
