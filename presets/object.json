@@ -15,13 +15,7 @@
     "clearcoat": 1
   },
   "themes": {
-    "dark": {
-      "background": "#0d1117",
-      "shadowOpacity": 0.5
-    },
-    "light": {
-      "background": "#ffffff",
-      "shadowOpacity": 0.2
-    }
+    "dark": { "background": "#0d1117" },
+    "light": { "background": "#ffffff" }
   }
 }

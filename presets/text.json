@@ -11,7 +11,7 @@
   "text": { "value": "{user}", "font": "inter", "weight": 900, "depth": 0.35 },
   "material": { "color": "#8b5cf6", "texture": "none", "metalness": 0.35, "roughness": 0.2, "clearcoat": 1 },
   "themes": {
-    "dark": { "background": "#0d1117", "shadowOpacity": 0.5 },
-    "light": { "background": "#ffffff", "shadowOpacity": 0.18 }
+    "dark": { "background": "#0d1117" },
+    "light": { "background": "#ffffff" }
   }
 }

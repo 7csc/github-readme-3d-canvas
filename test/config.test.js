@@ -166,6 +166,28 @@ test('theme colours follow the background for custom themes', async () => {
   assert.equal(config.themes.night.stars, true);
 });
 
+test('theme colours follow the background even when starting from a preset', async () => {
+  const dir = await workspace({
+    'clear.json': { preset: 'orbits', format: 'apng', themes: { dark: { background: 'transparent' } } },
+    'flipped.json': { preset: 'text', themes: { light: { background: '#000000' } } },
+    'explicit.json': { preset: 'orbits', themes: { dark: { orbitOpacity: 0.5 } } },
+  });
+  const clear = (await load('clear.json', dir)).config.themes.dark;
+  assert.deepEqual([clear.orbitColor, clear.orbitOpacity, clear.stars], ['#8b949e', 0.6, false]);
+  assert.equal((await load('flipped.json', dir)).config.themes.light.shadowOpacity, 0.5);
+  // A value the user sets explicitly still wins over the derived default.
+  assert.equal((await load('explicit.json', dir)).config.themes.dark.orbitOpacity, 0.5);
+});
+
+test('presets keep their look through the derived theme defaults', async () => {
+  const dir = await workspace();
+  const orbits = (await load('orbits', dir)).config.themes;
+  assert.deepEqual([orbits.dark.orbitColor, orbits.dark.orbitOpacity, orbits.dark.stars], ['#ffffff', 0.22, true]);
+  assert.deepEqual([orbits.light.orbitColor, orbits.light.orbitOpacity, orbits.light.stars], ['#57606a', 0.3, false]);
+  const object = (await load('object', dir)).config.themes;
+  assert.deepEqual([object.dark.shadowOpacity, object.light.shadowOpacity], [0.5, 0.2]);
+});
+
 test('APNG palette size is validated', async () => {
   const dir = await workspace({
     'ok.json': { preset: 'object', format: 'apng', colors: 0 },

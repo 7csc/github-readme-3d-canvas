@@ -12,7 +12,7 @@
     "sunRadius": 0.75
   },
   "themes": {
-    "dark": { "background": "#0d1117", "orbitColor": "#ffffff", "orbitOpacity": 0.22, "stars": true },
-    "light": { "background": "#ffffff", "orbitColor": "#57606a", "orbitOpacity": 0.3, "stars": false }
+    "dark": { "background": "#0d1117" },
+    "light": { "background": "#ffffff" }
   }
 }
