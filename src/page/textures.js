@@ -42,10 +42,13 @@ export function canvasTexture(width, height, draw) {
   return texture;
 }
 
-// CSS rgb()/rgba() string for `color` shifted in lightness. Canvas 2D works in sRGB, so the
-// colour is read back in sRGB rather than three.js's linear working space.
+// CSS rgb()/rgba() string for `color` shifted in lightness. Both the shift and the read-back work
+// in sRGB (what canvas 2D and the eye see): shifting in three.js's linear working space would
+// crush dark colours to black.
 export function cssColor(color, { lightness = 0, alpha = 1 } = {}) {
-  const c = new THREE.Color(color).offsetHSL(0, 0, lightness);
+  const c = new THREE.Color(color);
+  const hsl = c.getHSL({}, THREE.SRGBColorSpace);
+  c.setHSL(hsl.h, hsl.s, THREE.MathUtils.clamp(hsl.l + lightness, 0, 1), THREE.SRGBColorSpace);
   const { r, g, b } = c.getRGB({}, THREE.SRGBColorSpace);
   return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${alpha})`;
 }

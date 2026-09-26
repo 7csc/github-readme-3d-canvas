@@ -6,7 +6,7 @@ const QUERY = `query($login: String!) {
     contributionsCollection {
       contributionCalendar {
         totalContributions
-        weeks { contributionDays { contributionCount date weekday } }
+        weeks { contributionDays { contributionCount contributionLevel date weekday } }
       }
     }
   }
@@ -22,7 +22,7 @@ export async function fetchContributions(login, token) {
   try {
     res = await fetch(process.env.GITHUB_GRAPHQL_URL ?? 'https://api.github.com/graphql', {
       method: 'POST',
-      headers: { Authorization: `bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': 'github-3d-canvas' },
+      headers: { Authorization: `bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': 'github-readme-3d-canvas' },
       body: JSON.stringify({ query: QUERY, variables: { login } }),
       signal: AbortSignal.timeout(30_000),
     });
@@ -46,10 +46,19 @@ export async function fetchContributions(login, token) {
       for (const d of week.contributionDays) days[d.weekday] = d.contributionCount;
       return days;
     }),
+    // GitHub's own colour level for each day, exactly as the profile calendar shows it.
+    levels: calendar.weeks.map((week) => {
+      const days = Array(7).fill(null);
+      for (const d of week.contributionDays) days[d.weekday] = LEVELS[d.contributionLevel] ?? 0;
+      return days;
+    }),
   };
 }
 
-// GitHub's own colouring: 0 is level 0, the rest split into quartiles of the non-zero counts.
+const LEVELS = { NONE: 0, FIRST_QUARTILE: 1, SECOND_QUARTILE: 2, THIRD_QUARTILE: 3, FOURTH_QUARTILE: 4 };
+
+// Levels for inline data, which has no GitHub levels: 0 for none, the rest split into quartiles
+// of the non-zero counts (an approximation of how GitHub buckets them).
 export function contributionLevels(weeks) {
   const counts = weeks.flat().filter((c) => c > 0).sort((a, b) => a - b);
   const quartile = (q) => counts[Math.min(counts.length - 1, Math.floor(q * counts.length))] ?? 0;

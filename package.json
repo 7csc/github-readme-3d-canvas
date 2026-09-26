@@ -1,5 +1,5 @@
 {
-  "name": "github-3d-canvas",
+  "name": "github-readme-3d-canvas",
   "version": "1.0.1",
   "private": true,
   "description": "Render three.js scenes to looping GIFs for GitHub profile READMEs",
@@ -18,6 +18,6 @@
     "upng-js": "^2.1.0"
   },
   "engines": {
-    "node": ">=20.11"
+    "node": ">=22.12"
   }
 }

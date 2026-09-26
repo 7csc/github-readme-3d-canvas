@@ -63,6 +63,8 @@ async function loadGltf(path, renderer) {
   }
 }
 
+// Returns the model centred on the origin with its largest dimension scaled to 1; create() then
+// scales it to fit the frame.
 async function buildModel(config, renderer) {
   let object;
 
@@ -89,34 +91,84 @@ async function buildModel(config, renderer) {
     if (child.isMesh) child.castShadow = true;
   });
 
-  // Fit arbitrary models into the frame. Spinning models may show any side, so their largest
-  // dimension is fitted to a fixed size; swaying ones mostly face the camera, so wide objects
-  // such as text can fill the frame's width.
   const box = new THREE.Box3().setFromObject(object);
   if (box.isEmpty()) throw new Error(`model "${config.model}" contains no visible geometry`);
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
-  const viewHeight = 2 * CAMERA_DISTANCE * Math.tan(THREE.MathUtils.degToRad(35 / 2));
-  const viewWidth = viewHeight * (config.width / config.height);
-  const scale = config.animation === 'sway'
-    ? Math.min((viewWidth * 0.74) / size.x, (viewHeight * 0.55) / size.y, 2.6 / size.z)
-    : Math.min(2.2 / Math.max(size.x, size.y, size.z), (viewHeight * 0.55) / size.y);
+  const scale = 1 / Math.max(size.x, size.y, size.z);
   object.scale.setScalar(scale);
   object.position.copy(center).multiplyScalar(-scale);
-  return object;
+
+  const holder = new THREE.Group();
+  holder.add(object);
+  return { holder, box: new THREE.Box3().setFromObject(holder) };
+}
+
+// The pivot's pose over the loop (t from 0 to 1), shared by the animation and the framing.
+function poseAt(animation, t) {
+  const a = t * Math.PI * 2;
+  if (animation === 'sway') return { rx: -0.06 + Math.sin(a * 2) * 0.04, ry: Math.sin(a) * 0.55, y: Math.sin(a * 2) * 0.05 };
+  if (animation === 'turntable') return { rx: 0, ry: a, y: 0 };
+  return { rx: Math.sin(a) * 0.2, ry: a, y: Math.sin(a * 2) * 0.08 };
+}
+
+const FLOOR_Y = -1.5;
+const FRAME_MARGIN = 0.88;
+// Spinning models show every side, so they stay at a moderate size even in wide frames.
+const MAX_SPIN_SIZE = 2.2;
+
+// Finds the largest scale at which the model stays inside the frame and above the floor in every
+// pose of the loop, using the real camera projection (so perspective and aspect ratio count).
+function fitScale(camera, box, animation) {
+  const corners = [];
+  for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) corners.push(new THREE.Vector3(x, y, z));
+  const poses = Array.from({ length: 48 }, (_, i) => poseAt(animation, i / 48));
+  const v = new THREE.Vector3();
+  const euler = new THREE.Euler();
+
+  const fits = (s) => poses.every(({ rx, ry, y }) => {
+    euler.set(rx, ry, 0);
+    return corners.every((c) => {
+      v.copy(c).multiplyScalar(s).applyEuler(euler);
+      v.y += y;
+      if (v.y < FLOOR_Y + 0.05) return false;
+      v.project(camera);
+      return Math.abs(v.x) <= FRAME_MARGIN && Math.abs(v.y) <= FRAME_MARGIN && v.z < 1;
+    });
+  });
+
+  let lo = 0.05;
+  let hi = animation === 'sway' ? 20 : MAX_SPIN_SIZE;
+  if (fits(hi)) return hi;
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2;
+    if (fits(mid)) lo = mid;
+    else hi = mid;
+  }
+  return lo;
 }
 
 export async function create({ renderer, scene, camera, config }) {
   camera.position.set(0, 1.4, CAMERA_DISTANCE);
   camera.lookAt(0, -0.1, 0);
+  camera.updateMatrixWorld();
 
+  const { holder, box } = await buildModel(config, renderer);
+  const scale = fitScale(camera, box, config.animation);
+  holder.scale.setScalar(scale);
+  const pivot = new THREE.Group();
+  pivot.add(holder);
+  scene.add(pivot);
+
+  // The shadow camera has to cover the model's widest pose plus the shadow it throws.
+  const reach = Math.max(3, box.getBoundingSphere(new THREE.Sphere()).radius * scale * 1.6 + 1);
   const key = new THREE.DirectionalLight(0xffffff, 2.2);
   key.position.set(3, 5, 4);
   key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
   key.shadow.radius = 6;
   key.shadow.bias = -0.0005;
-  Object.assign(key.shadow.camera, { left: -3, right: 3, top: 3, bottom: -3, near: 0.5, far: 20 });
+  Object.assign(key.shadow.camera, { left: -reach, right: reach, top: reach, bottom: -reach, near: 0.5, far: 20 + reach });
   scene.add(key);
 
   const rim = new THREE.DirectionalLight(0x88aaff, 1.2);
@@ -124,33 +176,20 @@ export async function create({ renderer, scene, camera, config }) {
   scene.add(rim);
 
   const shadowMaterial = new THREE.ShadowMaterial({ opacity: 0.4 });
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), shadowMaterial);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(reach * 8, reach * 8), shadowMaterial);
   ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -1.5;
+  ground.position.y = FLOOR_Y;
   ground.receiveShadow = true;
   scene.add(ground);
 
-  const pivot = new THREE.Group();
-  pivot.add(await buildModel(config, renderer));
-  scene.add(pivot);
-
   return {
     setTheme(theme) {
-      shadowMaterial.opacity = theme.shadowOpacity ?? 0.4;
+      shadowMaterial.opacity = theme.shadowOpacity;
     },
     update(t) {
-      const a = t * Math.PI * 2;
-      if (config.animation === 'sway') {
-        pivot.rotation.y = Math.sin(a) * 0.55;
-        pivot.rotation.x = -0.06 + Math.sin(a * 2) * 0.04;
-        pivot.position.y = Math.sin(a * 2) * 0.05;
-      } else if (config.animation === 'turntable') {
-        pivot.rotation.y = a;
-      } else {
-        pivot.rotation.y = a;
-        pivot.rotation.x = Math.sin(a) * 0.2;
-        pivot.position.y = Math.sin(a * 2) * 0.08;
-      }
+      const { rx, ry, y } = poseAt(config.animation, t);
+      pivot.rotation.set(rx, ry, 0);
+      pivot.position.y = y;
     },
   };
 }

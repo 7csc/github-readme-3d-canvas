@@ -1,4 +1,4 @@
-# github-3d-canvas
+# github-readme-3d-canvas
 
 [English](README.md) | **日本語**
 
@@ -68,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: 7csc/github-3d-canvas@v1
+      - uses: 7csc/github-readme-3d-canvas@v1
         with:
           config: contributions text   # プリセット名、または設定ファイルのパス
 ```
@@ -88,7 +88,7 @@ jobs:
 
 | 入力 | 既定値 | 説明 |
 |---|---|---|
-| `config` | `orbits` | プリセット名か設定ファイルのパス。スペース区切りで複数指定可 |
+| `config` | `orbits` | プリセット名か設定ファイルのパス。スペースか改行で区切って複数指定可 |
 | `output` | `dist` | 画像の出力先ディレクトリ |
 | `commit` | `true` | 生成した画像をコミットして push するか |
 | `commit-message` | `chore: render 3D canvas` | コミットメッセージ |
@@ -97,11 +97,21 @@ jobs:
 
 出力 `changed` は、画像が前回のコミットから変わったときに `true` になります。
 
-- コミットされるのは `output` ディレクトリだけです。`.gitignore` で無視されていても追加され、他にステージされたファイルは含まれません。
-- 描画中にブランチが進んでいた場合は、最新のブランチの上でコミットし直して push します。
+- コミットされるのは、その実行で描画した画像ファイルだけです。`output` ディレクトリやリポジトリ内の他のファイルは含まれません。`.gitignore` で無視されていても追加され、他にステージされたファイルも含まれません。
+- 描画中にブランチが進んでいた場合は、最新のブランチの上に「描画した画像だけを差し替えたコミット」を作り直して push します。その間に push された変更はすべて残ります。
 - `pull_request` やタグなど、ブランチ上にいないチェックアウトでは描画のみ行い、警告を出してコミットしません。
-- 設定に誤りがあると、描画を始める前にファイル名とキー付きのエラーで停止します。
+- push には `actions/checkout` が既定で残す認証情報を使います。`commit: false` なら Git リポジトリがなくても動きます。
+- 設定に誤り（未知のキーやスペルミスを含む）があると、描画を始める前にファイル名とキー付きのエラーで停止します。
 - `contributions` は既定の `github.token` で公開コントリビューションを取得できます。
+- Node.js 22.12 以上が必要です。ランナーの Node が条件を満たせばそれを使い、満たさなければ Node 22 をインストールします（その場合、以降のステップの `PATH` にも残ります）。
+
+#### セキュリティ
+
+この Action は npm の依存パッケージを `--ignore-scripts` でインストールするため、パッケージのインストールスクリプトはジョブ内で実行されません。また、コミットするのは描画したファイルだけです。ただし、どの Action とも同じく、書き込み権限のトークンを持つジョブでサードパーティのコード（npm パッケージとヘッドレス Chrome）を実行します。リスクを抑えるには:
+
+- 上の例のように、権限は `contents: write` だけにしてください。
+- 更新を一つずつ確認したい場合は、`@v1` ではなくコミット SHA で固定してください。
+- または、読み取り専用のジョブで描画し（`commit: false`、checkout に `persist-credentials: false`）、画像を artifact としてアップロードして別のジョブでコミットしてください。このリポジトリの[デモ用ワークフロー](.github/workflows/render.yml)がその構成です。
 
 ### カスタマイズ
 
@@ -116,7 +126,7 @@ jobs:
 ```
 
 ```yaml
-      - uses: 7csc/github-3d-canvas@v1
+      - uses: 7csc/github-readme-3d-canvas@v1
         with:
           config: my-text.json
 ```
@@ -142,7 +152,7 @@ jobs:
 <img src="dist/my-object-dark.png" width="360" alt="3D object">
 ```
 
-APNG はフルカラー相当の見た目ですが、GIF よりファイルが大きくなりやすいので `frames` やサイズで調整してください。GIF は半透明を扱えないため、`"transparent"` は APNG でのみ使えます。
+APNG は既定で、色ごとに透明度を持つ 256 色パレットを使い、ファイルサイズを抑えます。`"colors": 0` にするとフルカラーになります（ファイルは大きくなります）。APNG は GIF よりファイルが大きくなりやすいので、`frames` やサイズで調整してください。GIF は半透明を扱えないため、`"transparent"` は APNG でのみ使えます。
 
 ## 設定
 
@@ -154,10 +164,11 @@ APNG はフルカラー相当の見た目ですが、GIF よりファイルが�
 | `scene` | `object` | `object` / `orbits` / `contributions` |
 | `name` | 設定ファイル名 | 出力ファイル名の接頭辞 |
 | `format` | `gif` | `gif` または `apng` |
+| `colors` | `256` | APNG のパレット色数。`0` でフルカラー、または 2〜256 |
 | `width` / `height` | シーンごと | 出力サイズ（px、16〜2000） |
 | `frames` / `fps` | シーンごと / `30` | フレーム数（1〜1000）と再生速度（1〜50）。`frames / fps` 秒で 1 ループ |
 | `supersample` | `2` | 内部解像度の倍率（1〜4 の整数、アンチエイリアス用） |
-| `themes.<name>.background` | `dark` / `light` | 背景色（`#rgb` / `#rrggbb`、APNG では `transparent` も可）。テーマごとに画像が 1 枚出力されます（`null` で出力しない） |
+| `themes.<name>.background` | `dark` / `light` | 背景色（`#rgb` / `#rrggbb`、APNG では `transparent` も可）。テーマごとに画像が 1 枚出力されます（`null` で出力しない）。他のテーマ色は背景の明暗（または透明）に合った値が既定で入るので、独自テーマは背景色だけ指定すれば動きます |
 
 ### `object` シーン（プリセット `object` / `text`）
 
@@ -168,9 +179,9 @@ APNG はフルカラー相当の見た目ですが、GIF よりファイルが�
 | `model` | `torusKnot` | `torusKnot` / `sphere` / `box` / `icosahedron` / `text`、またはリポジトリ内の `.glb` / `.gltf`（Draco / Meshopt / KTX2 圧縮にも対応） |
 | `animation` | `spin`（`text` は `sway`） | `spin`（回転＋傾き）/ `turntable`（水平回転）/ `sway`（左右に揺れる。正面を向きやすいので文字向き） |
 | `material.color` | `#8b5cf6` | ベースカラー |
-| `material.texture` | `none` | `stripes` / `checker` / `none`、または画像パス（png / jpg / webp / gif / svg） |
+| `material.texture` | `none` | `stripes` / `checker` / `none`、または画像パス（png / jpg / webp / gif） |
 | `material.metalness` / `roughness` / `clearcoat` | `0.2` / `0.3` / `1` | PBR パラメータ（0〜1） |
-| `themes.<name>.shadowOpacity` | `0.4` | 床の影の濃さ |
+| `themes.<name>.shadowOpacity` | ダーク `0.5` / ライト `0.2` | 床の影の濃さ |
 
 `material` は組み込みモデルと文字に適用されます。glTF モデルはファイルに含まれるマテリアルをそのまま使います。
 
@@ -187,7 +198,7 @@ APNG はフルカラー相当の見た目ですが、GIF よりファイルが�
 
 ### `contributions` シーン（プリセット `contributions`）
 
-直近 1 年のコントリビューションを、1 日 1 本の棒で表示します。高さはコントリビューション数、色は GitHub と同じ 4 段階です。
+直近 1 年のコントリビューションを、1 日 1 本の棒で表示します。高さはコントリビューション数、色は GitHub のカレンダーがその日に表示するのと同じ段階です。
 
 | キー | 既定値 | 説明 |
 |---|---|---|
@@ -196,7 +207,7 @@ APNG はフルカラー相当の見た目ですが、GIF よりファイルが�
 | `contributions.elevation` | `32` | カメラの見下ろし角度（0〜90 度） |
 | `contributions.heightScale` | `1` | 棒の高さの倍率 |
 | `contributions.label` | `true` | 台座の前面にユーザー名と合計数を表示するか |
-| `contributions.data` | — | GitHub から取得する代わりに使うデータ。`{ "weeks": [[日,月,…,土], …] }`（最大 60 週、欠けた日は `null`） |
+| `contributions.data` | — | GitHub から取得する代わりに使うデータ。`{ "weeks": [[日,月,…,土], …] }`（最大 60 週、欠けた日は `null`）。この場合、色の段階は件数から推定します |
 | `themes.<name>.levels` | GitHub の配色 | 5 色の配列（0 件、レベル 1〜4）。背景の明暗に合わせて既定値が選ばれます |
 | `themes.<name>.base` / `labelColor` | 背景に合わせて自動 | 台座とラベルの色 |
 
@@ -210,8 +221,8 @@ APNG はフルカラー相当の見た目ですが、GIF よりファイルが�
 | `orbits.sunColor` / `sunRadius` | `#ffb347` / `0.75` | 太陽の色と半径 |
 | `orbits.seed` | `7` | テクスチャや星空の乱数シード |
 | `orbits.planets` | 5 惑星 | 惑星の配列。下表参照 |
-| `themes.<name>.orbitColor` / `orbitOpacity` | `#ffffff` / `0.3` | 軌道線の色と不透明度 |
-| `themes.<name>.stars` | `true` | 背景の星を表示するか |
+| `themes.<name>.orbitColor` / `orbitOpacity` | ダーク `#ffffff` / `0.22`、ライト `#57606a` / `0.3` | 軌道線の色と不透明度 |
+| `themes.<name>.stars` | ダーク `true` / ライト `false` | 背景の星を表示するか |
 
 惑星ごとの設定（**必須**は `distance` と `orbits` のみ）:
 
@@ -238,7 +249,7 @@ APNG はフルカラー相当の見た目ですが、GIF よりファイルが�
 
 ```sh
 npm install
-npm run render                                    # 全プリセットを out/ に描画
+GITHUB_TOKEN=$(gh auth token) npm run render -- --user <あなた>  # 全プリセットを out/ に描画
 node src/render.js --help                         # オプション一覧
 node src/render.js --user octocat text            # {user} を指定して描画（既定の出力先は dist/）
 GITHUB_TOKEN=$(gh auth token) node src/render.js --user octocat contributions

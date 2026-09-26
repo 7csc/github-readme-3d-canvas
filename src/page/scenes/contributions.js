@@ -102,7 +102,7 @@ export async function create({ renderer, scene, camera, config }) {
     setTheme(theme) {
       const palette = theme.levels.map((hex) => new THREE.Color(hex));
       cells.forEach(({ level }, i) => bars.setColorAt(i, palette[level]));
-      bars.instanceColor.needsUpdate = true;
+      if (bars.instanceColor) bars.instanceColor.needsUpdate = true;
       baseMaterial.color.set(theme.base);
       labelMaterial?.color.set(theme.labelColor);
     },

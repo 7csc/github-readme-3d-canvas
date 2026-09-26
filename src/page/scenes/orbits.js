@@ -118,6 +118,7 @@ function orbitLine(a, e, lineMaterial) {
   geometry.setPositions(points);
   const line = new Line2(geometry, lineMaterial);
   line.computeLineDistances();
+  line.renderOrder = -1;
   return line;
 }
 
@@ -175,12 +176,14 @@ export async function create({ scene, camera, config }) {
   light.shadow.bias = -0.002;
   scene.add(light);
 
-  // Line2 measures linewidth in drawing-buffer pixels (it reads the viewport in device pixels),
-  // so unlike point sizes it has to be scaled by the supersample factor by hand. The lines are
-  // opaque, pre-blended with the background in setTheme: translucent segments overlap at every
-  // joint and would leave a row of brighter dots along each orbit.
-  const lineMaterial = new LineMaterial({ linewidth: 1.1 * config.supersample });
+  // Line2 takes its resolution from the renderer's logical viewport, so linewidth is in output
+  // pixels whatever the supersample factor. The lines are opaque, pre-blended with the background
+  // in setTheme: translucent segments overlap at every joint and would leave a row of brighter
+  // dots along each orbit. They are drawn first and write no depth, so the sun and planets always
+  // cover them instead of being striped by background-coloured lines.
+  const lineMaterial = new LineMaterial({ linewidth: 1.1 });
   lineMaterial.toneMapped = false;
+  lineMaterial.depthWrite = false;
 
   // Bounding spheres used to frame the camera: the sun's glow plus every sampled orbit point,
   // padded by the planet (and its ring and moon).
@@ -249,15 +252,15 @@ export async function create({ scene, camera, config }) {
 
   return {
     setTheme(theme) {
-      const color = theme.orbitColor ?? '#ffffff';
-      const opacity = theme.orbitOpacity ?? 0.3;
+      const color = theme.orbitColor;
+      const opacity = theme.orbitOpacity;
       // With nothing behind the lines to pre-blend against, fall back to real translucency.
       const translucent = theme.background === 'transparent';
       if (lineMaterial.transparent !== translucent) lineMaterial.needsUpdate = true;
       lineMaterial.transparent = translucent;
       lineMaterial.opacity = translucent ? opacity : 1;
       lineMaterial.color.copy(translucent ? new THREE.Color(color) : blendSrgb(theme.background, color, opacity));
-      stars.visible = theme.stars ?? true;
+      stars.visible = theme.stars;
     },
     update(t) {
       const loop = t * Math.PI * 2;

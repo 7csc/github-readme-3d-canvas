@@ -1,4 +1,4 @@
-# github-3d-canvas
+# github-readme-3d-canvas
 
 **English** | [日本語](README.ja.md)
 
@@ -68,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: 7csc/github-3d-canvas@v1
+      - uses: 7csc/github-readme-3d-canvas@v1
         with:
           config: contributions text   # preset names or config file paths
 ```
@@ -88,7 +88,7 @@ jobs:
 
 | Input | Default | Description |
 |---|---|---|
-| `config` | `orbits` | Preset names or config file paths, space-separated |
+| `config` | `orbits` | Preset names or config file paths, separated by spaces or new lines |
 | `output` | `dist` | Directory the images are written to |
 | `commit` | `true` | Whether to commit and push the rendered images |
 | `commit-message` | `chore: render 3D canvas` | Commit message |
@@ -97,11 +97,21 @@ jobs:
 
 The `changed` output is `true` when the images differ from the last commit.
 
-- Only the `output` directory is committed. It is added even if `.gitignore` ignores it, and nothing else you have staged is included.
-- If the branch moved while rendering, the commit is rebuilt on top of the latest branch and pushed.
+- Only the image files this run rendered are committed — never anything else in the `output` directory or the repository. They are added even if `.gitignore` ignores them, and nothing else you have staged is included.
+- If the branch moved while rendering, a new commit that replaces just those images is built on top of the latest branch and pushed; everything pushed in the meantime is kept.
 - On checkouts that are not on a branch (`pull_request`, tags, …) the images are rendered but not committed, with a warning.
-- A mistake in a config stops the run before rendering, with an error naming the file and the key.
+- Pushing uses the credentials `actions/checkout` leaves by default. With `commit: false` no git repository is needed at all.
+- A mistake in a config — including an unknown or misspelt key — stops the run before rendering, with an error naming the file and the key.
 - `contributions` can read public contributions with the default `github.token`.
+- The action needs Node.js 22.12 or later. It uses the runner's Node when it is new enough and installs Node 22 otherwise (which then stays on the `PATH` for later steps).
+
+#### Security
+
+The action installs its npm dependencies with `--ignore-scripts`, so no package install scripts run in your job, and it only commits the files it rendered. Like any action, though, it runs third-party code (npm packages and headless Chrome) in a job that may hold a write token. To limit that:
+
+- Grant only `contents: write`, as in the example above.
+- Pin the action to a full commit SHA instead of `@v1` if you want to review each update.
+- Or render in a read-only job (`commit: false`, `persist-credentials: false` on checkout), upload the images as an artifact, and commit them from a separate job — this repository's [demo workflow](.github/workflows/render.yml) does exactly that.
 
 ### Customizing
 
@@ -116,7 +126,7 @@ Put a JSON file in your repository and pick a base with `"preset"`; you only nee
 ```
 
 ```yaml
-      - uses: 7csc/github-3d-canvas@v1
+      - uses: 7csc/github-readme-3d-canvas@v1
         with:
           config: my-text.json
 ```
@@ -142,7 +152,7 @@ With `"format": "apng"` the output is an animated PNG with full alpha. Set the b
 <img src="dist/my-object-dark.png" width="360" alt="3D object">
 ```
 
-APNG looks close to full colour but tends to be larger than GIF, so tune `frames` and the size. GIF cannot store semi-transparency, so `"transparent"` is only available with APNG.
+By default APNG uses a 256-colour palette with per-colour alpha, which keeps files reasonably small; set `"colors": 0` for full colour (larger files). APNG tends to be larger than GIF, so tune `frames` and the size. GIF cannot store semi-transparency, so `"transparent"` is only available with APNG.
 
 ## Configuration
 
@@ -154,10 +164,11 @@ APNG looks close to full colour but tends to be larger than GIF, so tune `frames
 | `scene` | `object` | `object` / `orbits` / `contributions` |
 | `name` | config file name | Prefix of the output file names |
 | `format` | `gif` | `gif` or `apng` |
+| `colors` | `256` | APNG palette size: `0` for full colour, or 2–256 |
 | `width` / `height` | per scene | Output size (px, 16–2000) |
 | `frames` / `fps` | per scene / `30` | Frame count (1–1000) and playback speed (1–50). One loop lasts `frames / fps` seconds |
 | `supersample` | `2` | Internal resolution multiplier (integer 1–4, for anti-aliasing) |
-| `themes.<name>.background` | `dark` / `light` | Background colour (`#rgb` / `#rrggbb`, or `transparent` with APNG). One image per theme (`null` skips it) |
+| `themes.<name>.background` | `dark` / `light` | Background colour (`#rgb` / `#rrggbb`, or `transparent` with APNG). One image per theme (`null` skips it). Other theme colours default to values that suit a dark, light or transparent background, so custom themes only need a background |
 
 ### `object` scene (presets `object` / `text`)
 
@@ -168,9 +179,9 @@ A single model animates while casting a shadow on the floor.
 | `model` | `torusKnot` | `torusKnot` / `sphere` / `box` / `icosahedron` / `text`, or a `.glb` / `.gltf` in your repository (Draco / Meshopt / KTX2 compression supported) |
 | `animation` | `spin` (`sway` for `text`) | `spin` (rotate and tilt) / `turntable` (horizontal rotation) / `sway` (rocks side to side; stays mostly front-facing, good for text) |
 | `material.color` | `#8b5cf6` | Base colour |
-| `material.texture` | `none` | `stripes` / `checker` / `none`, or an image path (png / jpg / webp / gif / svg) |
+| `material.texture` | `none` | `stripes` / `checker` / `none`, or an image path (png / jpg / webp / gif) |
 | `material.metalness` / `roughness` / `clearcoat` | `0.2` / `0.3` / `1` | PBR parameters (0–1) |
-| `themes.<name>.shadowOpacity` | `0.4` | Floor shadow strength |
+| `themes.<name>.shadowOpacity` | `0.5` dark / `0.2` light | Floor shadow strength |
 
 `material` applies to built-in models and text. glTF models keep the materials stored in the file.
 
@@ -187,7 +198,7 @@ Settings for `model: "text"`:
 
 ### `contributions` scene (preset `contributions`)
 
-Shows the past year of contributions as one bar per day: height by contribution count, colour by GitHub's four levels.
+Shows the past year of contributions as one bar per day: height by contribution count, colour by the same level GitHub's calendar shows for that day.
 
 | Key | Default | Description |
 |---|---|---|
@@ -196,7 +207,7 @@ Shows the past year of contributions as one bar per day: height by contribution 
 | `contributions.elevation` | `32` | Camera angle above the horizon (0–90°) |
 | `contributions.heightScale` | `1` | Bar height multiplier |
 | `contributions.label` | `true` | Whether to show the user name and total on the front of the base |
-| `contributions.data` | — | Data to use instead of fetching from GitHub: `{ "weeks": [[Sun, Mon, …, Sat], …] }` (up to 60 weeks, `null` for missing days) |
+| `contributions.data` | — | Data to use instead of fetching from GitHub: `{ "weeks": [[Sun, Mon, …, Sat], …] }` (up to 60 weeks, `null` for missing days). Levels are then estimated from the counts |
 | `themes.<name>.levels` | GitHub colours | Array of 5 colours (none, then levels 1–4). The default follows how dark the background is |
 | `themes.<name>.base` / `labelColor` | from the background | Colours of the base and the label |
 
@@ -210,8 +221,8 @@ Planets travel on elliptical orbits around a sun. Motion follows Kepler's equati
 | `orbits.sunColor` / `sunRadius` | `#ffb347` / `0.75` | Sun colour and radius |
 | `orbits.seed` | `7` | Random seed for textures and the star field |
 | `orbits.planets` | 5 planets | Array of planets; see below |
-| `themes.<name>.orbitColor` / `orbitOpacity` | `#ffffff` / `0.3` | Orbit line colour and opacity |
-| `themes.<name>.stars` | `true` | Whether to show background stars |
+| `themes.<name>.orbitColor` / `orbitOpacity` | `#ffffff` / `0.22` dark, `#57606a` / `0.3` light | Orbit line colour and opacity |
+| `themes.<name>.stars` | `true` dark / `false` light | Whether to show background stars |
 
 Per-planet settings (only `distance` and `orbits` are **required**):
 
@@ -238,7 +249,7 @@ Per-planet settings (only `distance` and `orbits` are **required**):
 
 ```sh
 npm install
-npm run render                                    # render every preset to out/
+GITHUB_TOKEN=$(gh auth token) npm run render -- --user <you>  # render every preset to out/
 node src/render.js --help                         # list options
 node src/render.js --user octocat text            # render with {user} set (default output: dist/)
 GITHUB_TOKEN=$(gh auth token) node src/render.js --user octocat contributions

@@ -13,26 +13,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
+      - run: npx --no-install puppeteer browsers install chrome-headless-shell
       - run: npm test
 
   # Runs the action exactly as users do, without committing, on small fixtures covering every
-  # scene and both output formats.
+  # scene, both output formats and the {user} placeholder. The configs are given one per line to
+  # exercise multi-line input parsing.
   action:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: ./
         id: render
         with:
-          config: >-
+          config: |
             test/fixtures/smoke-object.json
             test/fixtures/smoke-text.json
+            test/fixtures/smoke-user.json
             test/fixtures/smoke-orbits.json
             test/fixtures/smoke-contributions.json
             test/fixtures/smoke-apng.json
@@ -41,12 +48,25 @@ jobs:
           commit: 'false'
 
       - name: Check outputs
+        env:
+          CHANGED: ${{ steps.render.outputs.changed }}
         run: |
-          for f in smoke-object-dark.gif smoke-object-light.gif smoke-text-dark.gif smoke-orbits-light.gif \
-                   smoke-contributions-dark.gif smoke-apng-dark.png; do
+          expected=(
+            smoke-object-dark.gif smoke-object-light.gif
+            smoke-text-dark.gif smoke-text-light.gif
+            smoke-user-dark.gif
+            smoke-orbits-dark.gif smoke-orbits-light.gif
+            smoke-contributions-dark.gif smoke-contributions-light.gif
+            smoke-apng-dark.png
+          )
+          for f in "${expected[@]}"; do
             test -s "out/$f" || { echo "::error::missing out/$f"; exit 1; }
           done
-          test "${{ steps.render.outputs.changed }}" = "true"
+          actual=$(ls out | wc -l)
+          test "$actual" -eq "${#expected[@]}" || { echo "::error::expected ${#expected[@]} files, got $actual"; ls out; exit 1; }
+          test "$CHANGED" = "true"
+          # commit: false must leave the caller's index untouched.
+          test -z "$(git diff --cached --name-only)"
 
       - uses: actions/upload-artifact@v7
         with:

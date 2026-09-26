@@ -1,4 +1,4 @@
-name: github-3d-canvas
+name: github-readme-3d-canvas
 description: Render three.js scenes to looping GIFs for your GitHub profile README
 author: 7csc
 branding:
@@ -8,17 +8,19 @@ branding:
 inputs:
   config:
     description: >
-      Space-separated list of config files (relative to the repository root) or preset names
-      (`orbits`, `object`, `text`, `contributions`). A config file may set `"preset"` to
+      Config files (relative to the repository root) or preset names (`orbits`, `object`, `text`,
+      `contributions`), separated by spaces or new lines. A config file may set `"preset"` to
       override only part of a preset.
     required: false
     default: orbits
   output:
-    description: Directory (relative to the repository root) where GIFs are written.
+    description: Directory (relative to the repository root) where images are written.
     required: false
     default: dist
   commit:
-    description: 'Commit and push the rendered GIFs. Needs `permissions: contents: write`.'
+    description: >
+      Commit and push the rendered images. Needs `permissions: contents: write` and a checkout
+      with credentials (the actions/checkout default).
     required: false
     default: 'true'
   commit-message:
@@ -36,7 +38,7 @@ inputs:
 
 outputs:
   changed:
-    description: '`true` when the rendered GIFs differ from the committed ones.'
+    description: '`true` when the rendered images differ from the committed ones.'
     value: ${{ steps.commit.outputs.changed }}
 
 runs:
@@ -48,7 +50,7 @@ runs:
       id: node
       shell: bash
       run: |
-        if node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 20 || (a === 20 && b >= 11) ? 0 : 1)' 2>/dev/null; then
+        if node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 12) ? 0 : 1)' 2>/dev/null; then
           echo "ok=true" >> "$GITHUB_OUTPUT"
         else
           echo "ok=false" >> "$GITHUB_OUTPUT"
@@ -61,31 +63,34 @@ runs:
         # The caller's package.json is not ours; never let setup-node try to cache for it.
         package-manager-cache: false
 
-    - name: Prepare browser cache
+    - name: Prepare
       id: prepare
       shell: bash
       run: |
-        echo "dir=$RUNNER_TEMP/github-3d-canvas/puppeteer" >> "$GITHUB_OUTPUT"
-        echo "key=github-3d-canvas-$RUNNER_OS-$RUNNER_ARCH-$(sha256sum "$GITHUB_ACTION_PATH/package-lock.json" | cut -c1-16)" >> "$GITHUB_OUTPUT"
+        dir="$RUNNER_TEMP/github-readme-3d-canvas"
+        mkdir -p "$dir"
+        echo "dir=$dir" >> "$GITHUB_OUTPUT"
+        echo "browsers=$dir/puppeteer" >> "$GITHUB_OUTPUT"
+        echo "key=github-readme-3d-canvas-$RUNNER_OS-$RUNNER_ARCH-$(sha256sum "$GITHUB_ACTION_PATH/package-lock.json" | cut -c1-16)" >> "$GITHUB_OUTPUT"
 
     - uses: actions/cache@v6
       with:
-        path: ${{ steps.prepare.outputs.dir }}
+        path: ${{ steps.prepare.outputs.browsers }}
         key: ${{ steps.prepare.outputs.key }}
 
-    # The PUPPETEER_* variables pin puppeteer to our own browser download so the caller's
-    # environment (PUPPETEER_SKIP_DOWNLOAD, PUPPETEER_EXECUTABLE_PATH, ...) cannot redirect it.
+    # Dependencies install with --ignore-scripts, so no package's install script runs in a job that
+    # may hold a write token. The only browser needed, chrome-headless-shell, is installed
+    # explicitly; the PUPPETEER_* variables keep the caller's environment from redirecting it.
     - name: Install renderer
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
-        PUPPETEER_CACHE_DIR: ${{ steps.prepare.outputs.dir }}
-        PUPPETEER_SKIP_DOWNLOAD: 'false'
-        PUPPETEER_CHROME_SKIP_DOWNLOAD: 'true'
-        PUPPETEER_CHROME_HEADLESS_SHELL_SKIP_DOWNLOAD: 'false'
+        PUPPETEER_CACHE_DIR: ${{ steps.prepare.outputs.browsers }}
         PUPPETEER_EXECUTABLE_PATH: ''
         PUPPETEER_BROWSER: chrome
-      run: npm ci --no-audit --no-fund
+      run: |
+        npm ci --ignore-scripts --no-audit --no-fund
+        npx --no-install puppeteer browsers install chrome-headless-shell
 
     # Runs from the action's own directory so puppeteer never reads config files from the
     # caller's repository; --workspace points the renderer at the caller's files instead.
@@ -93,33 +98,56 @@ runs:
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
-        PUPPETEER_CACHE_DIR: ${{ steps.prepare.outputs.dir }}
+        PUPPETEER_CACHE_DIR: ${{ steps.prepare.outputs.browsers }}
         PUPPETEER_EXECUTABLE_PATH: ''
         PUPPETEER_BROWSER: chrome
         CONFIGS: ${{ inputs.config }}
         OUTPUT: ${{ inputs.output }}
         RENDER_USER: ${{ inputs.user }}
         GITHUB_TOKEN: ${{ inputs.token }}
+        MANIFEST: ${{ steps.prepare.outputs.dir }}/files.txt
       run: |
-        read -r -a configs <<< "$CONFIGS"
-        args=(--workspace "$GITHUB_WORKSPACE" --output "$OUTPUT")
+        # Any whitespace, new lines included, separates configs.
+        mapfile -t configs < <(tr -s '[:space:]' '\n' <<< "$CONFIGS" | sed '/^$/d')
+        if [ ${#configs[@]} -eq 0 ]; then
+          echo "::error::The config input is empty; name at least one preset or config file."
+          exit 1
+        fi
+        args=(--workspace "$GITHUB_WORKSPACE" --output "$OUTPUT" --manifest "$MANIFEST")
         if [ -n "$RENDER_USER" ]; then args+=(--user "$RENDER_USER"); fi
         node src/render.js "${args[@]}" "${configs[@]}"
 
-    - name: Commit rendered GIFs
+    - name: Commit rendered images
       id: commit
       shell: bash
       working-directory: ${{ github.workspace }}
       env:
         COMMIT: ${{ inputs.commit }}
-        OUTPUT: ${{ inputs.output }}
         MESSAGE: ${{ inputs.commit-message }}
+        MANIFEST: ${{ steps.prepare.outputs.dir }}/files.txt
+        INDEX: ${{ steps.prepare.outputs.dir }}/index
+        GIT_AUTHOR_NAME: github-actions[bot]
+        GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        GIT_COMMITTER_NAME: github-actions[bot]
+        GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
       run: |
-        # -f: the output directory is often ignored by a template .gitignore (e.g. dist/).
-        git add -f -- "$OUTPUT"
-        if git diff --cached --quiet -- "$OUTPUT"; then
+        # Only the files this run rendered are ever staged or committed, never anything else that
+        # happens to live in (or next to) the output directory.
+        mapfile -t files < "$MANIFEST"
+
+        if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          if [ "$COMMIT" = "true" ]; then
+            echo "::error::commit: true needs a git checkout of the repository (actions/checkout)."
+            exit 1
+          fi
+          exit 0
+        fi
+
+        # --ignored also reports new files in ignored directories (e.g. dist/ from a template).
+        if [ -z "$(git status --porcelain --ignored -- "${files[@]}")" ]; then
           echo "changed=false" >> "$GITHUB_OUTPUT"
-          echo "No changes to commit."
+          echo "The rendered images are unchanged."
           exit 0
         fi
         echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -129,32 +157,44 @@ runs:
 
         branch=$(git symbolic-ref --quiet --short HEAD || true)
         if [ -z "$branch" ]; then
-          echo "::warning::Not on a branch (pull_request, tag or detached checkout); the GIFs were rendered but not committed."
+          echo "::warning::Not on a branch (pull_request, tag or detached checkout); the images were rendered but not committed."
           exit 0
         fi
 
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        # A pathspec commit records only the output directory, never anything else the caller staged.
-        git commit --quiet -m "$MESSAGE" -- "$OUTPUT"
+        # -f: the output directory is often ignored by a template .gitignore (e.g. dist/). The
+        # pathspec commit records only these files, not anything else the caller staged.
+        git add -f -- "${files[@]}"
+        git commit --quiet -m "$MESSAGE" -- "${files[@]}"
+        if git push origin "HEAD:$branch"; then
+          exit 0
+        fi
 
-        # If the branch moved while rendering, rebuild the commit on top of the new tip. The fresh
-        # render wins for the output directory; every other file keeps the remote's version.
+        # The branch moved while rendering. Build a commit on top of the new remote tip that
+        # replaces exactly the rendered files and keeps everything else as the remote has it. The
+        # working tree, index and HEAD are left alone, so nothing pushed meanwhile is reverted.
+        hashes=()
+        for f in "${files[@]}"; do hashes+=("$(git hash-object -w -- "$f")"); done
         for attempt in 1 2 3 4 5; do
-          if git push origin "HEAD:$branch"; then
-            exit 0
-          fi
-          echo "Push rejected (attempt $attempt); retrying on top of origin/$branch."
+          echo "Push rejected (attempt $attempt); rebuilding the commit on top of origin/$branch."
           sleep $((attempt * 3))
           git fetch --quiet origin "$branch"
-          git reset --quiet --soft "origin/$branch"
-          git reset --quiet -- .
-          git add -f -- "$OUTPUT"
-          if git diff --cached --quiet -- "$OUTPUT"; then
-            echo "The remote already has identical GIFs."
+          base=$(git rev-parse FETCH_HEAD)
+          rm -f "$INDEX"
+          GIT_INDEX_FILE="$INDEX" git read-tree "$base"
+          for i in "${!files[@]}"; do
+            GIT_INDEX_FILE="$INDEX" git update-index --add --cacheinfo "100644,${hashes[$i]},${files[$i]}"
+          done
+          tree=$(GIT_INDEX_FILE="$INDEX" git write-tree)
+          if [ "$tree" = "$(git rev-parse "$base^{tree}")" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "The remote already has identical images."
             exit 0
           fi
-          git commit --quiet -m "$MESSAGE" -- "$OUTPUT"
+          commit=$(git commit-tree "$tree" -p "$base" -m "$MESSAGE")
+          if git push origin "$commit:refs/heads/$branch"; then
+            echo "::notice::Pushed on top of the updated $branch; the local checkout was left as it was."
+            exit 0
+          fi
         done
-        echo "::error::Could not push the rendered GIFs after 5 attempts."
+        echo "::error::Could not push the rendered images after 5 attempts."
         exit 1

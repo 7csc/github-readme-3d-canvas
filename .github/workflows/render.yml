@@ -13,8 +13,7 @@ on:
     - cron: '17 3 * * 1' # weekly, to keep the contributions demo current
   workflow_dispatch:
 
-permissions:
-  contents: write
+permissions: {}
 
 # Overlapping runs would race to push the same images.
 concurrency:
@@ -22,11 +21,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Everything that runs third-party code (npm packages, headless Chrome) happens here, with a
+  # read-only token and no git credentials left on disk, so it cannot push or move tags.
   render:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: ./
         with:
           config: object orbits text contributions
+          commit: 'false'
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: demo-images
+          path: dist/
+          retention-days: 1
+
+  # Only this job can write, and it runs nothing but git.
+  commit:
+    needs: render
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: demo-images
+          path: dist/
+
+      - name: Commit images
+        run: |
+          git add dist
+          if git diff --cached --quiet; then
+            echo "The demo images are unchanged."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "chore: render 3D canvas"
+          git push

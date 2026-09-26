@@ -29,8 +29,8 @@ test('the calendar is reshaped into weeks of seven days', async () => {
           contributionCalendar: {
             totalContributions: 5,
             weeks: [
-              { contributionDays: [{ contributionCount: 2, date: '2026-01-03', weekday: 6 }] },
-              { contributionDays: [{ contributionCount: 3, date: '2026-01-04', weekday: 0 }] },
+              { contributionDays: [{ contributionCount: 2, contributionLevel: 'FIRST_QUARTILE', date: '2026-01-03', weekday: 6 }] },
+              { contributionDays: [{ contributionCount: 3, contributionLevel: 'FOURTH_QUARTILE', date: '2026-01-04', weekday: 0 }] },
             ],
           },
         },
@@ -42,6 +42,9 @@ test('the calendar is reshaped into weeks of seven days', async () => {
   assert.deepEqual(data.weeks[0], [null, null, null, null, null, null, 2]);
   assert.deepEqual(data.weeks[1], [3, null, null, null, null, null, null]);
   assert.equal(data.from, '2026-01-03');
+  // Levels come from GitHub as-is rather than being recomputed from the counts.
+  assert.deepEqual(data.levels[0], [null, null, null, null, null, null, 1]);
+  assert.deepEqual(data.levels[1], [4, null, null, null, null, null, null]);
 });
 
 test('API errors surface with their message', async () => {

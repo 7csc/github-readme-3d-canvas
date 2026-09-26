@@ -57,8 +57,9 @@ export function encodeGif(frames, { width, height, fps }) {
 }
 
 // Animated PNG: full 8-bit alpha, so transparent backgrounds keep smooth edges. `colors` 0 keeps
-// full colour (bigger); 256 quantises to a palette with per-entry alpha (much smaller).
+// full colour (bigger); 2-256 quantises to a palette with per-entry alpha (much smaller).
 export function encodeApng(frames, { width, height, fps, colors = 256 }) {
+  if (!Number.isInteger(colors) || colors < 0 || colors === 1 || colors > 256) throw new Error(`colors must be 0 or 2-256 (got ${colors})`);
   const buffers = frames.map((f) => f.buffer.slice(f.byteOffset, f.byteOffset + f.byteLength));
   return new Uint8Array(UPNG.encode(buffers, width, height, colors, frameDelays(frames.length, fps)));
 }

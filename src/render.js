@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 import puppeteer from 'puppeteer';
 import { listPresets, loadConfig } from './config.js';
@@ -22,6 +22,8 @@ With no configs, every bundled preset is rendered.
 
 Options:
   -o, --output <dir>      output directory inside the workspace (default: dist)
+      --manifest <file>   also write the paths of the rendered files (one per line, relative
+                          to the workspace) to <file>
       --workspace <dir>   directory configs, models and textures are resolved from (default: cwd)
       --user <login>      GitHub user for {user} placeholders (default: $GITHUB_REPOSITORY_OWNER)
   -h, --help              show this help
@@ -56,24 +58,43 @@ async function prepare(config, workspace) {
 
   if (config.scene === 'contributions') {
     const c = config.contributions;
-    const data = c.data
-      ? { user: c.user.includes('{') ? null : c.user, total: c.data.total ?? c.data.weeks.flat().reduce((a, b) => a + (b ?? 0), 0), ...c.data }
-      : await fetchContributions(c.user, process.env.GITHUB_TOKEN || process.env.GH_TOKEN);
+    let data;
+    if (c.data) {
+      // Inline data has no GitHub levels, so they are derived from the counts.
+      const weeks = c.data.weeks;
+      data = {
+        user: c.user.includes('{') ? null : c.user,
+        total: c.data.total ?? weeks.flat().reduce((a, b) => a + (b ?? 0), 0),
+        weeks,
+        levels: contributionLevels(weeks),
+      };
+    } else {
+      data = await fetchContributions(c.user, process.env.GITHUB_TOKEN || process.env.GH_TOKEN);
+    }
     const label = [data.user && `@${data.user}`, `${data.total.toLocaleString('en-US')} contributions`].filter(Boolean).join('  ');
-    c.grid = { weeks: data.weeks, levels: contributionLevels(data.weeks) };
+    c.grid = { weeks: data.weeks, levels: data.levels };
     c.labelCommands = c.label ? await layoutText(label, { weight: 700 }) : null;
   }
 }
 
-async function renderConfig(browser, port, { config, label }, { outputDir, workspace }) {
+async function renderConfig(browser, port, { config, label }, { outputDir, workspace, written }) {
   const page = await browser.newPage();
   const pageErrors = [];
   page.on('pageerror', (err) => pageErrors.push(err.message));
   page.on('console', (msg) => {
-    if (msg.type() === 'error' || msg.type() === 'warning') console.warn(`[${label}] ${msg.text()}`);
+    // puppeteer reports console.warn as "warn"; "warning" is kept for older protocol versions.
+    if (['error', 'warn', 'warning'].includes(msg.type())) console.warn(`[${label}] ${msg.text()}`);
   });
   page.on('response', (res) => {
-    if (res.status() >= 400) console.warn(`[${label}] failed to load ${decodeURI(new URL(res.url()).pathname)} (${res.status()})`);
+    if (res.status() < 400) return;
+    const path = new URL(res.url()).pathname;
+    let shown = path;
+    try {
+      shown = decodeURIComponent(path);
+    } catch {
+      // Malformed escapes (the server answered 400 for exactly these) are shown as they are.
+    }
+    console.warn(`[${label}] failed to load ${shown} (${res.status()})`);
   });
 
   try {
@@ -99,6 +120,7 @@ async function renderConfig(browser, port, { config, label }, { outputDir, works
       const file = join(outputDir, `${config.name}-${themeName}.${EXTENSIONS[config.format]}`);
       await writeFile(file, bytes);
       const shown = relative(workspace, file);
+      written.push(shown.split(sep).join('/'));
       console.log(`-> ${shown} (${(bytes.length / 1024).toFixed(0)} KB)`);
       if (bytes.length > LARGE_FILE_BYTES) {
         warn(`${shown} is ${(bytes.length / 1024 / 1024).toFixed(1)} MB; lower frames, width or height to keep the README fast`);
@@ -114,6 +136,7 @@ async function main() {
     allowPositionals: true,
     options: {
       output: { type: 'string', short: 'o', default: 'dist' },
+      manifest: { type: 'string' },
       // The Action runs from its own directory (so the caller's puppeteer config files are never
       // picked up) and points here at the caller's repository.
       workspace: { type: 'string', default: process.cwd() },
@@ -159,12 +182,15 @@ async function main() {
     args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
   });
 
+  const written = [];
   try {
-    for (const entry of loaded) await renderConfig(browser, server.address().port, entry, { outputDir, workspace });
+    for (const entry of loaded) await renderConfig(browser, server.address().port, entry, { outputDir, workspace, written });
   } finally {
     await browser.close();
     server.close();
   }
+  if (values.manifest) await writeFile(resolve(values.manifest), written.map((f) => `${f}
+`).join(''));
 }
 
 main().catch((err) => {

@@ -1,14 +1,18 @@
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { deepMerge, listPresets, loadConfig } from '../src/config.js';
 
 const PRESETS = resolve(import.meta.dirname, '..', 'presets');
 
+const created = [];
+after(() => Promise.all(created.map((dir) => rm(dir, { recursive: true, force: true }))));
+
 async function workspace(files = {}) {
   const dir = await mkdtemp(join(tmpdir(), '3d-canvas-'));
+  created.push(dir);
   for (const [name, content] of Object.entries(files)) {
     await mkdir(join(dir, name, '..'), { recursive: true });
     await writeFile(join(dir, name), typeof content === 'string' ? content : JSON.stringify(content));
@@ -117,7 +121,73 @@ test('contribution themes get GitHub colours matching their background', async (
 });
 
 test('text defaults to swaying, other models to spinning', async () => {
-  const dir = await workspace();
-  assert.equal((await load('text', dir)).config.animation, 'sway');
-  assert.equal((await load('object', dir)).config.animation, 'spin');
+  const dir = await workspace({
+    'text.json': { scene: 'object', model: 'text', text: { value: 'Hi' } },
+    'knot.json': { scene: 'object' },
+  });
+  assert.equal((await load('text.json', dir)).config.animation, 'sway');
+  assert.equal((await load('knot.json', dir)).config.animation, 'spin');
+});
+
+test('unknown keys are rejected, with a suggestion for likely typos', async () => {
+  const dir = await workspace({
+    'typo.json': { preset: 'text', txt: { value: 'Hello' }, animaton: 'turntable', material: { colour: '#f97316' } },
+    'wrong-scene.json': { preset: 'orbits', material: { color: '#ffffff' }, themes: { dark: { background: '#000000', shadowOpacity: 1 } } },
+  });
+  const err = await load('typo.json', dir).catch((e) => e);
+  assert.match(err.message, /txt: unknown key.*did you mean "text"/);
+  assert.match(err.message, /animaton: unknown key.*did you mean "animation"/);
+  assert.match(err.message, /material\.colour: unknown key.*did you mean "color"/);
+  const scene = await load('wrong-scene.json', dir).catch((e) => e);
+  assert.match(scene.message, /material: unknown key for the orbits scene/);
+  assert.match(scene.message, /themes\.dark\.shadowOpacity: unknown key for the orbits scene/);
+});
+
+test('defaults derived for one config never leak into another', async () => {
+  const dir = await workspace({
+    'a.json': { scene: 'contributions', contributions: { data: { weeks: [[1, 2, 3, 4, 5, 6, 7]] } } },
+    'b.json': { scene: 'contributions', contributions: { data: { weeks: [[1, 2, 3, 4, 5, 6, 7]] } }, themes: { light: { background: '#000000' } } },
+  });
+  for (let i = 0; i < 5; i++) {
+    const [a, b] = await Promise.all([load('a.json', dir), load('b.json', dir)]);
+    assert.equal(a.config.themes.light.levels[4], '#216e39');
+    assert.equal(b.config.themes.light.levels[4], '#39d353', 'a black "light" theme gets the dark palette');
+  }
+});
+
+test('theme colours follow the background for custom themes', async () => {
+  const dir = await workspace({
+    'o.json': { scene: 'orbits', themes: { paper: { background: '#fafafa' }, night: { background: '#000000' } } },
+  });
+  const { config } = await load('o.json', dir);
+  assert.equal(config.themes.paper.orbitColor, '#57606a');
+  assert.equal(config.themes.paper.stars, false);
+  assert.equal(config.themes.night.orbitColor, '#ffffff');
+  assert.equal(config.themes.night.stars, true);
+});
+
+test('APNG palette size is validated', async () => {
+  const dir = await workspace({
+    'ok.json': { preset: 'object', format: 'apng', colors: 0 },
+    'bad.json': { preset: 'object', format: 'apng', colors: 1 },
+    'big.json': { preset: 'object', format: 'apng', colors: 1000 },
+  });
+  await load('ok.json', dir);
+  await assert.rejects(load('bad.json', dir), /colors: must be 0 \(full colour\) or 2-256/);
+  await assert.rejects(load('big.json', dir), /colors: must be at most 256/);
+});
+
+test('asset paths must be relative and of a supported type', async () => {
+  const dir = await workspace({
+    'abs.json': { preset: 'object', material: { texture: '/etc/wood.png' } },
+    'svg.json': { preset: 'object', material: { texture: 'textures/logo.svg' } },
+    'textures/logo.svg': '<svg/>',
+  });
+  await assert.rejects(load('abs.json', dir), /relative to the repository root/);
+  await assert.rejects(load('svg.json', dir), /must be a \.png \/ \.jpg \/ \.webp \/ \.gif file/);
+});
+
+test('inline contribution data needs at least one day', async () => {
+  const dir = await workspace({ 'empty.json': { preset: 'contributions', contributions: { data: { weeks: [[null, null, null, null, null, null, null]] } } } });
+  await assert.rejects(load('empty.json', dir), /at least one day/);
 });
