@@ -1,0 +1,32 @@
+name: Render 3D canvas
+
+# Renders the demo images shown in this repository's README by running the action itself.
+on:
+  push:
+    branches: [main]
+    paths:
+      - action.yml
+      - presets/**
+      - src/**
+      - package*.json
+  schedule:
+    - cron: '17 3 * * 1' # weekly, to keep the contributions demo current
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Overlapping runs would race to push the same images.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./
+        with:
+          config: object orbits text contributions

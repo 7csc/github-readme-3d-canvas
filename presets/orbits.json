@@ -1,0 +1,18 @@
+{
+  "scene": "orbits",
+  "name": "orbits",
+  "width": 560,
+  "height": 315,
+  "frames": 150,
+  "fps": 30,
+  "supersample": 2,
+  "orbits": {
+    "elevation": 24,
+    "sunColor": "#ffb347",
+    "sunRadius": 0.75
+  },
+  "themes": {
+    "dark": { "background": "#0d1117", "orbitColor": "#ffffff", "orbitOpacity": 0.22, "stars": true },
+    "light": { "background": "#ffffff", "orbitColor": "#57606a", "orbitOpacity": 0.3, "stars": false }
+  }
+}

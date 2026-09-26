@@ -1,0 +1,27 @@
+{
+  "scene": "object",
+  "name": "canvas",
+  "width": 360,
+  "height": 360,
+  "frames": 60,
+  "fps": 30,
+  "supersample": 2,
+  "model": "torusKnot",
+  "material": {
+    "color": "#8b5cf6",
+    "texture": "stripes",
+    "metalness": 0.2,
+    "roughness": 0.25,
+    "clearcoat": 1
+  },
+  "themes": {
+    "dark": {
+      "background": "#0d1117",
+      "shadowOpacity": 0.5
+    },
+    "light": {
+      "background": "#ffffff",
+      "shadowOpacity": 0.2
+    }
+  }
+}

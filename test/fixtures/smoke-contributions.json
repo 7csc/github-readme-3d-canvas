@@ -1,0 +1,12 @@
+{
+  "preset": "contributions",
+  "name": "smoke-contributions",
+  "width": 200,
+  "height": 100,
+  "frames": 3,
+  "contributions": {
+    "data": {
+      "weeks": [[null, null, 0, 1, 2, 3, 4], [5, 6, 0, 0, 8, 12, 1], [2, 0, 0, 3, 9, 4, null]]
+    }
+  }
+}

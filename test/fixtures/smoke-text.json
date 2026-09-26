@@ -1,0 +1,1 @@
+{ "preset": "text", "name": "smoke-text", "text": { "value": "Hi!" }, "width": 160, "height": 60, "frames": 3 }

@@ -1,0 +1,160 @@
+name: github-3d-canvas
+description: Render three.js scenes to looping GIFs for your GitHub profile README
+author: 7csc
+branding:
+  icon: box
+  color: purple
+
+inputs:
+  config:
+    description: >
+      Space-separated list of config files (relative to the repository root) or preset names
+      (`orbits`, `object`, `text`, `contributions`). A config file may set `"preset"` to
+      override only part of a preset.
+    required: false
+    default: orbits
+  output:
+    description: Directory (relative to the repository root) where GIFs are written.
+    required: false
+    default: dist
+  commit:
+    description: 'Commit and push the rendered GIFs. Needs `permissions: contents: write`.'
+    required: false
+    default: 'true'
+  commit-message:
+    description: Commit message used when `commit` is true.
+    required: false
+    default: 'chore: render 3D canvas'
+  user:
+    description: GitHub user for `{user}` in configs (text, contributions). Defaults to the repository owner.
+    required: false
+    default: ''
+  token:
+    description: Token used to read contributions for the `contributions` scene.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  changed:
+    description: '`true` when the rendered GIFs differ from the committed ones.'
+    value: ${{ steps.commit.outputs.changed }}
+
+runs:
+  using: composite
+  steps:
+    # Reuse the runner's Node when it is new enough, so the caller's later steps keep the Node
+    # they expect. Only fall back to installing one when it is missing or too old.
+    - name: Check Node.js
+      id: node
+      shell: bash
+      run: |
+        if node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 20 || (a === 20 && b >= 11) ? 0 : 1)' 2>/dev/null; then
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "ok=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - if: steps.node.outputs.ok != 'true'
+      uses: actions/setup-node@v7
+      with:
+        node-version: 22
+        # The caller's package.json is not ours; never let setup-node try to cache for it.
+        package-manager-cache: false
+
+    - name: Prepare browser cache
+      id: prepare
+      shell: bash
+      run: |
+        echo "dir=$RUNNER_TEMP/github-3d-canvas/puppeteer" >> "$GITHUB_OUTPUT"
+        echo "key=github-3d-canvas-$RUNNER_OS-$RUNNER_ARCH-$(sha256sum "$GITHUB_ACTION_PATH/package-lock.json" | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/cache@v6
+      with:
+        path: ${{ steps.prepare.outputs.dir }}
+        key: ${{ steps.prepare.outputs.key }}
+
+    # The PUPPETEER_* variables pin puppeteer to our own browser download so the caller's
+    # environment (PUPPETEER_SKIP_DOWNLOAD, PUPPETEER_EXECUTABLE_PATH, ...) cannot redirect it.
+    - name: Install renderer
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        PUPPETEER_CACHE_DIR: ${{ steps.prepare.outputs.dir }}
+        PUPPETEER_SKIP_DOWNLOAD: 'false'
+        PUPPETEER_CHROME_SKIP_DOWNLOAD: 'true'
+        PUPPETEER_CHROME_HEADLESS_SHELL_SKIP_DOWNLOAD: 'false'
+        PUPPETEER_EXECUTABLE_PATH: ''
+        PUPPETEER_BROWSER: chrome
+      run: npm ci --no-audit --no-fund
+
+    # Runs from the action's own directory so puppeteer never reads config files from the
+    # caller's repository; --workspace points the renderer at the caller's files instead.
+    - name: Render
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        PUPPETEER_CACHE_DIR: ${{ steps.prepare.outputs.dir }}
+        PUPPETEER_EXECUTABLE_PATH: ''
+        PUPPETEER_BROWSER: chrome
+        CONFIGS: ${{ inputs.config }}
+        OUTPUT: ${{ inputs.output }}
+        RENDER_USER: ${{ inputs.user }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        read -r -a configs <<< "$CONFIGS"
+        args=(--workspace "$GITHUB_WORKSPACE" --output "$OUTPUT")
+        if [ -n "$RENDER_USER" ]; then args+=(--user "$RENDER_USER"); fi
+        node src/render.js "${args[@]}" "${configs[@]}"
+
+    - name: Commit rendered GIFs
+      id: commit
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        COMMIT: ${{ inputs.commit }}
+        OUTPUT: ${{ inputs.output }}
+        MESSAGE: ${{ inputs.commit-message }}
+      run: |
+        # -f: the output directory is often ignored by a template .gitignore (e.g. dist/).
+        git add -f -- "$OUTPUT"
+        if git diff --cached --quiet -- "$OUTPUT"; then
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+          echo "No changes to commit."
+          exit 0
+        fi
+        echo "changed=true" >> "$GITHUB_OUTPUT"
+        if [ "$COMMIT" != "true" ]; then
+          exit 0
+        fi
+
+        branch=$(git symbolic-ref --quiet --short HEAD || true)
+        if [ -z "$branch" ]; then
+          echo "::warning::Not on a branch (pull_request, tag or detached checkout); the GIFs were rendered but not committed."
+          exit 0
+        fi
+
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        # A pathspec commit records only the output directory, never anything else the caller staged.
+        git commit --quiet -m "$MESSAGE" -- "$OUTPUT"
+
+        # If the branch moved while rendering, rebuild the commit on top of the new tip. The fresh
+        # render wins for the output directory; every other file keeps the remote's version.
+        for attempt in 1 2 3 4 5; do
+          if git push origin "HEAD:$branch"; then
+            exit 0
+          fi
+          echo "Push rejected (attempt $attempt); retrying on top of origin/$branch."
+          sleep $((attempt * 3))
+          git fetch --quiet origin "$branch"
+          git reset --quiet --soft "origin/$branch"
+          git reset --quiet -- .
+          git add -f -- "$OUTPUT"
+          if git diff --cached --quiet -- "$OUTPUT"; then
+            echo "The remote already has identical GIFs."
+            exit 0
+          fi
+          git commit --quiet -m "$MESSAGE" -- "$OUTPUT"
+        done
+        echo "::error::Could not push the rendered GIFs after 5 attempts."
+        exit 1

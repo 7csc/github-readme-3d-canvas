@@ -1,0 +1,1 @@
+{ "preset": "object", "name": "smoke-apng", "format": "apng", "width": 120, "height": 120, "frames": 3, "themes": { "light": null, "dark": { "background": "transparent" } } }
