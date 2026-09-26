@@ -1,6 +1,8 @@
 # github-3d-canvas
 
-three.js のシーンをヘッドレス Chrome でレンダリングし、GitHub プロフィール README に貼れるループアニメーション（GIF / APNG）を生成する GitHub Action です。
+**English** | [日本語](README.ja.md)
+
+A GitHub Action that renders three.js scenes in headless Chrome and turns them into looping animations (GIF / APNG) for your GitHub profile README.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="dist/contributions-dark.gif">
@@ -22,42 +24,42 @@ three.js のシーンをヘッドレス Chrome でレンダリングし、GitHub
   <img src="dist/canvas-light.gif" width="360" alt="3D object">
 </picture>
 
-## プリセット
+## Presets
 
-| プリセット | 内容 | 出力 |
+| Preset | What it shows | Output |
 |---|---|---|
-| `contributions` | コントリビューションカレンダーを 3D の棒グラフ（スカイライン）で表示 | `contributions-*.gif` |
-| `text` | ユーザー名などを立体文字で表示 | `text-*.gif` |
-| `orbits` | 太陽の周りを惑星がケプラー運動で公転 | `orbits-*.gif` |
-| `object` | 組み込みの形状や glTF モデルが回転 | `canvas-*.gif` |
+| `contributions` | Your contribution calendar as a 3D bar chart (skyline) | `contributions-*.gif` |
+| `text` | Your name (or any text) as extruded 3D letters | `text-*.gif` |
+| `orbits` | Planets orbiting a sun with Keplerian motion | `orbits-*.gif` |
+| `object` | A spinning built-in shape or glTF model | `canvas-*.gif` |
 
-`contributions` と `text` は、既定でリポジトリの持ち主（`{user}`）の名前とデータを使います。
+By default, `contributions` and `text` use the name and data of the repository owner (`{user}`).
 
-## プロフィールに設置する（GitHub Action）
+## Add it to your profile (GitHub Action)
 
-fork は不要です。自分のプロフィールリポジトリ（`<ユーザー名>/<ユーザー名>`）にワークフローを 1 つ追加するだけで使えます。
+No fork needed. Add a single workflow to your profile repository (`<username>/<username>`).
 
-**1. ワークフローを追加** — `.github/workflows/3d-canvas.yml`
+**1. Add a workflow** — `.github/workflows/3d-canvas.yml`
 
 ```yaml
 name: 3D canvas
 
 on:
-  workflow_dispatch:        # Actions タブから手動実行
+  workflow_dispatch:        # run manually from the Actions tab
   schedule:
-    - cron: '0 0 * * *'     # 毎日更新（contributions を使う場合）
+    - cron: '0 0 * * *'     # refresh daily (useful for contributions)
   push:
     branches: [main]
-    paths:                  # 設定・モデル・テクスチャ・フォントを変えたら再生成
+    paths:                  # re-render when configs, models, textures or fonts change
       - '**.json'
       - 'models/**'
       - 'textures/**'
       - 'fonts/**'
 
 permissions:
-  contents: write           # 画像をコミットするために必要
+  contents: write           # needed to commit the images
 
-concurrency:                # 実行が重なったら古い方を止める
+concurrency:                # if runs overlap, cancel the older one
   group: 3d-canvas
   cancel-in-progress: true
 
@@ -68,12 +70,12 @@ jobs:
       - uses: actions/checkout@v7
       - uses: 7csc/github-3d-canvas@v1
         with:
-          config: contributions text   # プリセット名、または設定ファイルのパス
+          config: contributions text   # preset names or config file paths
 ```
 
-**2. Actions タブから「3D canvas」を実行** — `dist/contributions-dark.gif` などがコミットされます。
+**2. Run "3D canvas" from the Actions tab** — `dist/contributions-dark.gif` and friends get committed.
 
-**3. プロフィール README に貼る** — GitHub のテーマに合わせて自動で切り替わります。
+**3. Embed them in your profile README** — they switch automatically with the viewer's GitHub theme.
 
 ```html
 <picture>
@@ -82,28 +84,28 @@ jobs:
 </picture>
 ```
 
-### 入力
+### Inputs
 
-| 入力 | 既定値 | 説明 |
+| Input | Default | Description |
 |---|---|---|
-| `config` | `orbits` | プリセット名か設定ファイルのパス。スペース区切りで複数指定可 |
-| `output` | `dist` | 画像の出力先ディレクトリ |
-| `commit` | `true` | 生成した画像をコミットして push するか |
-| `commit-message` | `chore: render 3D canvas` | コミットメッセージ |
-| `user` | リポジトリの持ち主 | 設定内の `{user}` を置き換える GitHub ユーザー名 |
-| `token` | `${{ github.token }}` | `contributions` のデータ取得に使うトークン |
+| `config` | `orbits` | Preset names or config file paths, space-separated |
+| `output` | `dist` | Directory the images are written to |
+| `commit` | `true` | Whether to commit and push the rendered images |
+| `commit-message` | `chore: render 3D canvas` | Commit message |
+| `user` | repository owner | GitHub user that replaces `{user}` in configs |
+| `token` | `${{ github.token }}` | Token used to fetch data for `contributions` |
 
-出力 `changed` は、画像が前回のコミットから変わったときに `true` になります。
+The `changed` output is `true` when the images differ from the last commit.
 
-- コミットされるのは `output` ディレクトリだけです。`.gitignore` で無視されていても追加され、他にステージされたファイルは含まれません。
-- 描画中にブランチが進んでいた場合は、最新のブランチの上でコミットし直して push します。
-- `pull_request` やタグなど、ブランチ上にいないチェックアウトでは描画のみ行い、警告を出してコミットしません。
-- 設定に誤りがあると、描画を始める前にファイル名とキー付きのエラーで停止します。
-- `contributions` は既定の `github.token` で公開コントリビューションを取得できます。
+- Only the `output` directory is committed. It is added even if `.gitignore` ignores it, and nothing else you have staged is included.
+- If the branch moved while rendering, the commit is rebuilt on top of the latest branch and pushed.
+- On checkouts that are not on a branch (`pull_request`, tags, …) the images are rendered but not committed, with a warning.
+- A mistake in a config stops the run before rendering, with an error naming the file and the key.
+- `contributions` can read public contributions with the default `github.token`.
 
-### カスタマイズ
+### Customizing
 
-リポジトリに JSON を置き、`"preset"` で元にするプリセットを指定すると、変えたい項目だけ上書きできます。出力ファイル名は JSON のファイル名になります（`my-text.json` → `dist/my-text-dark.gif`）。
+Put a JSON file in your repository and pick a base with `"preset"`; you only need to write the keys you want to change. Output files are named after the JSON file (`my-text.json` → `dist/my-text-dark.gif`).
 
 ```json
 {
@@ -119,14 +121,14 @@ jobs:
           config: my-text.json
 ```
 
-- オブジェクトはマージされ、配列（`planets` など）は丸ごと置き換わります。
-- 省略したキーには既定値が入るので、`preset` を使わない設定ファイルでも必要な項目だけ書けば動きます。
-- テーマを `null` にするとその画像は出力されません。
-- `model`、`material.texture`、`text.font` には自分のリポジトリ内のファイル（`models/logo.glb`、`textures/wood.jpg`、`fonts/NotoSansJP-Bold.otf` など）を指定できます。パスは大文字小文字を区別します。
+- Objects are merged; arrays (such as `planets`) are replaced as a whole.
+- Omitted keys get defaults, so a config without `preset` works with just the keys it needs.
+- Setting a theme to `null` skips that image.
+- `model`, `material.texture` and `text.font` can point at files in your repository (`models/logo.glb`, `textures/wood.jpg`, `fonts/NotoSansJP-Bold.otf`, …). Paths are case-sensitive.
 
-### 透明背景（APNG）
+### Transparent backgrounds (APNG)
 
-`"format": "apng"` にすると、半透明を含むアニメーション PNG を出力します。背景を `"transparent"` にすれば、ダーク・ライトどちらのテーマでも 1 枚で自然に表示できます。
+With `"format": "apng"` the output is an animated PNG with full alpha. Set the background to `"transparent"` and a single image looks right on both dark and light themes.
 
 ```json
 {
@@ -140,89 +142,89 @@ jobs:
 <img src="dist/my-object-dark.png" width="360" alt="3D object">
 ```
 
-APNG はフルカラー相当の見た目ですが、GIF よりファイルが大きくなりやすいので `frames` やサイズで調整してください。GIF は半透明を扱えないため、`"transparent"` は APNG でのみ使えます。
+APNG looks close to full colour but tends to be larger than GIF, so tune `frames` and the size. GIF cannot store semi-transparency, so `"transparent"` is only available with APNG.
 
-## 設定
+## Configuration
 
-### 共通
+### Common
 
-| キー | 既定値 | 説明 |
+| Key | Default | Description |
 |---|---|---|
-| `preset` | — | 元にするプリセット名。指定した項目だけ上書きされます |
+| `preset` | — | Preset to start from; only the keys you set are overridden |
 | `scene` | `object` | `object` / `orbits` / `contributions` |
-| `name` | 設定ファイル名 | 出力ファイル名の接頭辞 |
-| `format` | `gif` | `gif` または `apng` |
-| `width` / `height` | シーンごと | 出力サイズ（px、16〜2000） |
-| `frames` / `fps` | シーンごと / `30` | フレーム数（1〜1000）と再生速度（1〜50）。`frames / fps` 秒で 1 ループ |
-| `supersample` | `2` | 内部解像度の倍率（1〜4 の整数、アンチエイリアス用） |
-| `themes.<name>.background` | `dark` / `light` | 背景色（`#rgb` / `#rrggbb`、APNG では `transparent` も可）。テーマごとに画像が 1 枚出力されます（`null` で出力しない） |
+| `name` | config file name | Prefix of the output file names |
+| `format` | `gif` | `gif` or `apng` |
+| `width` / `height` | per scene | Output size (px, 16–2000) |
+| `frames` / `fps` | per scene / `30` | Frame count (1–1000) and playback speed (1–50). One loop lasts `frames / fps` seconds |
+| `supersample` | `2` | Internal resolution multiplier (integer 1–4, for anti-aliasing) |
+| `themes.<name>.background` | `dark` / `light` | Background colour (`#rgb` / `#rrggbb`, or `transparent` with APNG). One image per theme (`null` skips it) |
 
-### `object` シーン（プリセット `object` / `text`）
+### `object` scene (presets `object` / `text`)
 
-1 つのモデルが床に影を落としながらアニメーションします。
+A single model animates while casting a shadow on the floor.
 
-| キー | 既定値 | 説明 |
+| Key | Default | Description |
 |---|---|---|
-| `model` | `torusKnot` | `torusKnot` / `sphere` / `box` / `icosahedron` / `text`、またはリポジトリ内の `.glb` / `.gltf`（Draco / Meshopt / KTX2 圧縮にも対応） |
-| `animation` | `spin`（`text` は `sway`） | `spin`（回転＋傾き）/ `turntable`（水平回転）/ `sway`（左右に揺れる。正面を向きやすいので文字向き） |
-| `material.color` | `#8b5cf6` | ベースカラー |
-| `material.texture` | `none` | `stripes` / `checker` / `none`、または画像パス（png / jpg / webp / gif / svg） |
-| `material.metalness` / `roughness` / `clearcoat` | `0.2` / `0.3` / `1` | PBR パラメータ（0〜1） |
-| `themes.<name>.shadowOpacity` | `0.4` | 床の影の濃さ |
+| `model` | `torusKnot` | `torusKnot` / `sphere` / `box` / `icosahedron` / `text`, or a `.glb` / `.gltf` in your repository (Draco / Meshopt / KTX2 compression supported) |
+| `animation` | `spin` (`sway` for `text`) | `spin` (rotate and tilt) / `turntable` (horizontal rotation) / `sway` (rocks side to side; stays mostly front-facing, good for text) |
+| `material.color` | `#8b5cf6` | Base colour |
+| `material.texture` | `none` | `stripes` / `checker` / `none`, or an image path (png / jpg / webp / gif / svg) |
+| `material.metalness` / `roughness` / `clearcoat` | `0.2` / `0.3` / `1` | PBR parameters (0–1) |
+| `themes.<name>.shadowOpacity` | `0.4` | Floor shadow strength |
 
-`material` は組み込みモデルと文字に適用されます。glTF モデルはファイルに含まれるマテリアルをそのまま使います。
+`material` applies to built-in models and text. glTF models keep the materials stored in the file.
 
-`model: "text"` のときの設定:
+Settings for `model: "text"`:
 
-| キー | 既定値 | 説明 |
+| Key | Default | Description |
 |---|---|---|
-| `text.value` | `{user}` | 表示する文字列。`\n` で改行 |
-| `text.font` | `inter` | 同梱の Inter（ラテン文字）、またはリポジトリ内の `.ttf` / `.otf` / `.woff`。日本語は日本語フォントのファイルを指定してください |
-| `text.weight` | `700` | `inter` の太さ（`400` / `700` / `900`） |
-| `text.depth` | `0.3` | 文字の厚み |
-| `text.bevel` | `true` | 角を丸めるか |
-| `text.lineHeight` | `1.2` | 行間 |
+| `text.value` | `{user}` | Text to show. Use `\n` for line breaks |
+| `text.font` | `inter` | The bundled Inter (Latin), or a `.ttf` / `.otf` / `.woff` in your repository. For Japanese and other scripts, point at a font file that covers them |
+| `text.weight` | `700` | Weight of `inter` (`400` / `700` / `900`) |
+| `text.depth` | `0.3` | Letter thickness |
+| `text.bevel` | `true` | Whether to round the edges |
+| `text.lineHeight` | `1.2` | Line spacing |
 
-### `contributions` シーン（プリセット `contributions`）
+### `contributions` scene (preset `contributions`)
 
-直近 1 年のコントリビューションを、1 日 1 本の棒で表示します。高さはコントリビューション数、色は GitHub と同じ 4 段階です。
+Shows the past year of contributions as one bar per day: height by contribution count, colour by GitHub's four levels.
 
-| キー | 既定値 | 説明 |
+| Key | Default | Description |
 |---|---|---|
-| `contributions.user` | `{user}` | 表示するユーザー |
-| `contributions.animation` | `sway` | `sway`（左右に揺れる）/ `turntable`（1 回転） |
-| `contributions.elevation` | `32` | カメラの見下ろし角度（0〜90 度） |
-| `contributions.heightScale` | `1` | 棒の高さの倍率 |
-| `contributions.label` | `true` | 台座の前面にユーザー名と合計数を表示するか |
-| `contributions.data` | — | GitHub から取得する代わりに使うデータ。`{ "weeks": [[日,月,…,土], …] }`（最大 60 週、欠けた日は `null`） |
-| `themes.<name>.levels` | GitHub の配色 | 5 色の配列（0 件、レベル 1〜4）。背景の明暗に合わせて既定値が選ばれます |
-| `themes.<name>.base` / `labelColor` | 背景に合わせて自動 | 台座とラベルの色 |
+| `contributions.user` | `{user}` | User to show |
+| `contributions.animation` | `sway` | `sway` (rocks side to side) / `turntable` (one full turn) |
+| `contributions.elevation` | `32` | Camera angle above the horizon (0–90°) |
+| `contributions.heightScale` | `1` | Bar height multiplier |
+| `contributions.label` | `true` | Whether to show the user name and total on the front of the base |
+| `contributions.data` | — | Data to use instead of fetching from GitHub: `{ "weeks": [[Sun, Mon, …, Sat], …] }` (up to 60 weeks, `null` for missing days) |
+| `themes.<name>.levels` | GitHub colours | Array of 5 colours (none, then levels 1–4). The default follows how dark the background is |
+| `themes.<name>.base` / `labelColor` | from the background | Colours of the base and the label |
 
-### `orbits` シーン（プリセット `orbits`）
+### `orbits` scene (preset `orbits`)
 
-太陽の周りを惑星が楕円軌道で公転します。公転はケプラーの方程式に従い、近日点付近ほど速く動きます。
+Planets travel on elliptical orbits around a sun. Motion follows Kepler's equation, so planets speed up near periapsis.
 
-| キー | 既定値 | 説明 |
+| Key | Default | Description |
 |---|---|---|
-| `orbits.elevation` | `24` | カメラの見下ろし角度（0〜90 度）。角度に関係なく全体が収まるようにカメラ距離を自動調整します |
-| `orbits.sunColor` / `sunRadius` | `#ffb347` / `0.75` | 太陽の色と半径 |
-| `orbits.seed` | `7` | テクスチャや星空の乱数シード |
-| `orbits.planets` | 5 惑星 | 惑星の配列。下表参照 |
-| `themes.<name>.orbitColor` / `orbitOpacity` | `#ffffff` / `0.3` | 軌道線の色と不透明度 |
-| `themes.<name>.stars` | `true` | 背景の星を表示するか |
+| `orbits.elevation` | `24` | Camera angle above the orbital plane (0–90°). The camera distance adjusts so everything fits at any angle |
+| `orbits.sunColor` / `sunRadius` | `#ffb347` / `0.75` | Sun colour and radius |
+| `orbits.seed` | `7` | Random seed for textures and the star field |
+| `orbits.planets` | 5 planets | Array of planets; see below |
+| `themes.<name>.orbitColor` / `orbitOpacity` | `#ffffff` / `0.3` | Orbit line colour and opacity |
+| `themes.<name>.stars` | `true` | Whether to show background stars |
 
-惑星ごとの設定（**必須**は `distance` と `orbits` のみ）:
+Per-planet settings (only `distance` and `orbits` are **required**):
 
-| キー | 既定値 | 説明 |
+| Key | Default | Description |
 |---|---|---|
-| `distance` | — | 軌道長半径（0 より大きい数） |
-| `orbits` | — | 1 ループあたりの公転回数（**整数**。継ぎ目なくループさせるため。負数で逆回り） |
-| `color` / `radius` | `#9ca3af` / `0.2` | 色と半径 |
+| `distance` | — | Semi-major axis (a number greater than 0) |
+| `orbits` | — | Orbits per loop (**integer**, so the loop is seamless; negative runs backwards) |
+| `color` / `radius` | `#9ca3af` / `0.2` | Colour and radius |
 | `texture` | `rocky` | `rocky` / `gas` / `ocean` / `plain` |
-| `eccentricity` / `inclination` | `0` / `0` | 離心率（0〜0.95）・軌道傾斜角（度） |
-| `spin` / `tilt` | `3` / `10` | 1 ループあたりの自転回数（整数）と自転軸の傾き（度） |
-| `ring` / `ringColor` | `false` / 惑星の色 | 環を付けるか、その色 |
-| `moon` | なし | `{ "radius", "distance", "orbits", "color" }` で衛星を 1 つ追加（`color` 以外必須） |
+| `eccentricity` / `inclination` | `0` / `0` | Eccentricity (0–0.95) and orbital inclination (degrees) |
+| `spin` / `tilt` | `3` / `10` | Rotations per loop (integer) and axial tilt (degrees) |
+| `ring` / `ringColor` | `false` / planet colour | Whether to add a ring, and its colour |
+| `moon` | none | `{ "radius", "distance", "orbits", "color" }` adds one moon (all but `color` required) |
 
 ```json
 "planets": [
@@ -232,29 +234,29 @@ APNG はフルカラー相当の見た目ですが、GIF よりファイルが�
 ]
 ```
 
-## ローカルで実行する
+## Running locally
 
 ```sh
 npm install
-npm run render                                    # 全プリセットを out/ に描画
-node src/render.js --help                         # オプション一覧
-node src/render.js --user octocat text            # {user} を指定して描画（既定の出力先は dist/）
+npm run render                                    # render every preset to out/
+node src/render.js --help                         # list options
+node src/render.js --user octocat text            # render with {user} set (default output: dist/)
 GITHUB_TOKEN=$(gh auth token) node src/render.js --user octocat contributions
-node src/render.js --workspace ../profile my.json # 別のリポジトリの設定・アセットを使う
-npm test                                          # 単体テスト
+node src/render.js --workspace ../profile my.json # use configs and assets from another repository
+npm test                                          # unit tests
 ```
 
-設定ファイルや `model` / `texture` / `font` のパスは `--workspace`（省略時はカレントディレクトリ）からの相対パスです。
+Paths for config files and `model` / `texture` / `font` are relative to `--workspace` (the current directory by default).
 
-`dist/` の画像は CI（Linux）で描画したものをコミットしています。OS によって描画結果がわずかに異なるため、ローカルで描画した画像は `dist/` にコミットしないでください（`npm run render` は `.gitignore` 済みの `out/` に出力します）。
+The images in `dist/` are rendered by CI (Linux) and committed from there. Rendering differs slightly between operating systems, so please don't commit locally rendered images to `dist/` (`npm run render` writes to the git-ignored `out/`).
 
-## 補足
+## Notes
 
-- GIF は 256 色なので、グラデーションの多いシーンはバンディングが出やすくなります。
-- GIF では前フレームから変化のない領域を透明ピクセルとして書き出し、ファイルサイズを抑えています。
-- サイズが大きい場合は `frames` か `width` / `height` を下げてください（10 MB を超えると警告が出ます）。
-- フレーム間隔は 1/100 秒単位です。端数は各フレームに振り分けるので、ループ全体の長さは `frames / fps` 秒ちょうどになります。
+- GIF is limited to 256 colours, so scenes with many gradients can show banding.
+- For GIF, regions unchanged since the previous frame are written as transparent pixels to keep files small.
+- If a file is too large, lower `frames` or `width` / `height` (a warning appears above 10 MB).
+- Frame delays are in 1/100 s units. The rounding is spread across frames, so a loop lasts exactly `frames / fps` seconds.
 
-## ライセンス
+## License
 
-[MIT](LICENSE)。同梱フォント Inter は SIL Open Font License 1.1（`@fontsource/inter`）です。
+[MIT](LICENSE). The bundled Inter font is licensed under the SIL Open Font License 1.1 (`@fontsource/inter`).
